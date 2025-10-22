@@ -1,0 +1,23 @@
+{
+    "ip_webcam": {
+        "ip_address": "10.10.70.17",
+        "port": "8080",
+        "stream_path": "/video"
+    },
+    "telegram": {
+        "bot_token": "YOUR_BOT_TOKEN_HERE",
+        "chat_id": "YOUR_CHAT_ID_HERE"
+    },
+    "detection": {
+        "confidence_threshold": 0.7,
+        "fall_angle_threshold": 60,
+        "cooldown_seconds": 30,
+        "min_detection_confidence": 0.5
+    },
+    "system": {
+        "fps": 10,
+        "screenshot_quality": 90,
+        "log_file": "fall_detection.log",
+        "screenshots_folder": "fall_screenshots"
+    }
+}

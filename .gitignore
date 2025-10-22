@@ -1,8 +1,5 @@
 # Fall Detection System - Git Ignore
 
-# Configuration with sensitive data
-config.json
-
 # Log files
 *.log
 fall_detection.log

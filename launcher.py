@@ -185,11 +185,52 @@ class FallDetectionLauncher:
         )
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
+    def create_default_config(self):
+        """Create default configuration file if it doesn't exist"""
+        default_config = {
+            "ip_webcam": {
+                "ip_address": "10.10.70.17",
+                "port": "8080",
+                "stream_path": "/video"
+            },
+            "telegram": {
+                "bot_token": "YOUR_BOT_TOKEN_HERE",
+                "chat_id": "YOUR_CHAT_ID_HERE"
+            },
+            "detection": {
+                "confidence_threshold": 0.7,
+                "fall_angle_threshold": 60,
+                "cooldown_seconds": 30,
+                "min_detection_confidence": 0.5
+            },
+            "system": {
+                "fps": 10,
+                "screenshot_quality": 90,
+                "log_file": "fall_detection.log",
+                "screenshots_folder": "fall_screenshots"
+            }
+        }
+
+        with open(self.config_file, 'w') as f:
+            json.dump(default_config, f, indent=4)
+
+        return default_config
+
     def load_config(self):
         """Load configuration from file"""
         try:
-            with open(self.config_file, 'r') as f:
-                config = json.load(f)
+            # Check if config file exists, if not create it
+            if not os.path.exists(self.config_file):
+                messagebox.showinfo(
+                    "First Time Setup",
+                    "Config file not found. Creating default configuration.\n\n" +
+                    "Please update your Telegram Bot Token and Chat ID."
+                )
+                config = self.create_default_config()
+                self.update_status("Default configuration created", "orange")
+            else:
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
 
             self.ip_entry.insert(0, config['ip_webcam']['ip_address'])
             self.port_entry.insert(0, config['ip_webcam']['port'])
@@ -198,7 +239,11 @@ class FallDetectionLauncher:
             self.confidence_entry.insert(0, str(config['detection']['confidence_threshold']))
             self.cooldown_entry.insert(0, str(config['detection']['cooldown_seconds']))
 
-            self.update_status("Configuration loaded successfully", "green")
+            if os.path.exists(self.config_file) and config['telegram']['bot_token'] != "YOUR_BOT_TOKEN_HERE":
+                self.update_status("Configuration loaded successfully", "green")
+            else:
+                self.update_status("Please configure Telegram settings", "orange")
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load configuration: {e}")
             self.update_status("Failed to load configuration", "red")
@@ -206,9 +251,14 @@ class FallDetectionLauncher:
     def save_config(self):
         """Save configuration to file"""
         try:
-            with open(self.config_file, 'r') as f:
-                config = json.load(f)
+            # Create default config if file doesn't exist
+            if not os.path.exists(self.config_file):
+                config = self.create_default_config()
+            else:
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
 
+            # Update config with current values
             config['ip_webcam']['ip_address'] = self.ip_entry.get()
             config['ip_webcam']['port'] = self.port_entry.get()
             config['telegram']['bot_token'] = self.token_entry.get()
@@ -216,11 +266,15 @@ class FallDetectionLauncher:
             config['detection']['confidence_threshold'] = float(self.confidence_entry.get())
             config['detection']['cooldown_seconds'] = int(self.cooldown_entry.get())
 
+            # Write updated config
             with open(self.config_file, 'w') as f:
                 json.dump(config, f, indent=4)
 
             messagebox.showinfo("Success", "Configuration saved successfully!")
             self.update_status("Configuration saved", "green")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid value entered: {e}\n\nPlease check confidence threshold (0.0-1.0) and cooldown (integer).")
+            self.update_status("Invalid configuration values", "red")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save configuration: {e}")
             self.update_status("Failed to save configuration", "red")
