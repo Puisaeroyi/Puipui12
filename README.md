@@ -89,14 +89,30 @@ python fall_detection.py
 
 ### What Happens When a Fall is Detected
 
-1. System detects a person in a fallen position
-2. Calculates confidence level
-3. If confidence > threshold (default 70%), sends alert
-4. Telegram receives:
-   - Alert message with timestamp
-   - Screenshot of the detected fall
-   - Confidence level and body angle
-5. Cooldown period activated (default 30 seconds)
+The system uses **intelligent fall state tracking** to distinguish between NEW falls and continuous detection:
+
+1. **System detects** a person in a fallen position (2 consecutive frames required)
+2. **Calculates** confidence level based on body angle, position, and posture
+3. **If confidence > threshold** (default 70%) and this is a **NEW fall**:
+   - Marks person as "currently fallen"
+   - Sends Telegram alert with:
+     - Alert message with timestamp
+     - Screenshot of the detected fall
+     - Confidence level and body angle
+     - Warning to check on the person
+4. **While person remains fallen**: Status shows "Still Down" (no repeated alerts)
+5. **When person gets up** (3 consecutive frames standing/sitting):
+   - System automatically resets
+   - Ready to detect next fall
+   - Console shows "Person got up - System reset"
+
+**For Testing:** You can test multiple falls in succession! Just:
+1. Lie down → Alert sent ✅
+2. Get up → System resets ✅
+3. Lie down again → NEW alert sent ✅
+4. Repeat as needed
+
+**Note:** The 30-second cooldown still applies as a safety measure to prevent alert spam from detection glitches.
 
 ## Configuration Options
 
@@ -118,13 +134,33 @@ Edit `config.json` to customize:
 
 ## How Fall Detection Works
 
-The system uses a multi-factor approach:
+The system uses a **multi-factor approach with intelligent state tracking**:
 
-1. **Body Angle Analysis**: Detects if the body is horizontal (< 60° from horizontal)
-2. **Vertical Position**: Checks if the person is in the lower part of the frame
-3. **Height Difference**: Measures if shoulders and hips are at similar height (flat position)
+### Detection Factors (Confidence Calculation):
 
-All three factors are combined with weighted confidence scoring.
+1. **Body Angle Analysis** (40% weight): Detects if the body is horizontal (< 60° from horizontal)
+2. **Vertical Position** (30% weight): Checks if the person is in the lower part of the frame
+3. **Height Difference** (30% weight): Measures if shoulders and hips are at similar height (flat position)
+
+All three factors are combined with weighted confidence scoring (0.0 to 1.0).
+
+### Fall State Machine:
+
+The system tracks whether a person is currently fallen or not:
+
+- **Standing/Sitting State**: Monitoring for falls
+  - If fall detected for 2+ consecutive frames → Transition to Fallen State → **Send Alert**
+
+- **Fallen State**: Person is down
+  - Displays "Still Down" on screen
+  - No repeated alerts (prevents spam)
+  - If person not fallen for 3+ consecutive frames → Transition back to Standing/Sitting State → **System Reset**
+
+This intelligent tracking ensures:
+- ✅ Each NEW fall gets its own alert
+- ✅ No alert spam while person remains down
+- ✅ System automatically resets when person recovers
+- ✅ Perfect for testing multiple falls in succession
 
 ## Troubleshooting
 

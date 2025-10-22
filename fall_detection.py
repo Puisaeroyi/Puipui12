@@ -40,7 +40,9 @@ class FallDetectionSystem:
 
         # State management
         self.last_alert_time = 0
-        self.fall_detected = False
+        self.is_currently_fallen = False  # Track if person is currently in fallen state
+        self.frames_not_fallen = 0  # Counter to confirm person got up
+        self.frames_fallen = 0  # Counter to confirm fall is real
 
         # Create screenshots folder
         self.screenshots_folder = Path(self.config['system']['screenshots_folder'])
@@ -158,11 +160,13 @@ class FallDetectionSystem:
             cv2.imwrite(str(screenshot_path), image, [cv2.IMWRITE_JPEG_QUALITY, self.config['system']['screenshot_quality']])
 
             # Prepare message
-            message = f"🚨 FALL DETECTED 🚨\n\n"
+            fall_type = details.get('fall_type', 'DETECTED')
+            message = f"🚨 {fall_type} FALL DETECTED 🚨\n\n"
             message += f"⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             message += f"📊 Confidence: {details.get('confidence', 0):.2%}\n"
             message += f"📐 Body Angle: {details.get('body_angle', 0):.1f}°\n"
-            message += f"📍 Position: {details.get('y_position', 0):.2f}"
+            message += f"📍 Position: {details.get('y_position', 0):.2f}\n\n"
+            message += f"⚠️ Please check on the person immediately!"
 
             # Send message
             bot_token = self.config['telegram']['bot_token']
@@ -293,29 +297,63 @@ class FallDetectionSystem:
                         frame.shape[1]
                     )
 
-                    # Check if fall detected and confidence is high enough
+                    # Fall state machine - detect NEW falls vs continuous falls
                     if is_fall and confidence >= self.confidence_threshold:
-                        current_time = time.time()
+                        # Fall detected with high confidence
+                        self.frames_fallen += 1
+                        self.frames_not_fallen = 0
 
-                        # Check cooldown
-                        if current_time - self.last_alert_time >= self.cooldown_seconds:
-                            logging.warning(f"FALL DETECTED! Confidence: {confidence:.2%}")
-                            details['confidence'] = confidence
+                        # Check if this is a NEW fall (person just fell)
+                        if not self.is_currently_fallen and self.frames_fallen >= 2:
+                            # NEW FALL DETECTED! (need 2 consecutive frames to confirm)
+                            self.is_currently_fallen = True
+                            current_time = time.time()
 
-                            # Send alert
-                            if self.send_telegram_alert(frame, details):
-                                self.last_alert_time = current_time
-                                print(f"\n🚨 FALL DETECTED! Alert sent at {datetime.now().strftime('%H:%M:%S')}")
-                                print(f"   Confidence: {confidence:.2%}")
-                                print(f"   Next alert available in {self.cooldown_seconds} seconds\n")
-                        else:
-                            remaining = int(self.cooldown_seconds - (current_time - self.last_alert_time))
-                            cv2.putText(frame, f"Cooldown: {remaining}s", (10, 30),
-                                      cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                            # Optional: Check cooldown for safety (prevents spam from detection glitches)
+                            if current_time - self.last_alert_time >= self.cooldown_seconds:
+                                logging.warning(f"NEW FALL DETECTED! Confidence: {confidence:.2%}")
+                                details['confidence'] = confidence
+                                details['fall_type'] = 'NEW'
+
+                                # Send alert
+                                if self.send_telegram_alert(frame, details):
+                                    self.last_alert_time = current_time
+                                    print(f"\n🚨 NEW FALL DETECTED! Alert sent at {datetime.now().strftime('%H:%M:%S')}")
+                                    print(f"   Confidence: {confidence:.2%}")
+                                    print(f"   Status: Person has fallen\n")
+                            else:
+                                remaining = int(self.cooldown_seconds - (current_time - self.last_alert_time))
+                                print(f"⚠️  Fall detected but in cooldown period ({remaining}s remaining)")
+                                cv2.putText(frame, f"Cooldown: {remaining}s", (10, 30),
+                                          cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+
+                        elif self.is_currently_fallen:
+                            # Person is STILL fallen (continuous detection)
+                            cv2.putText(frame, "Still Down", (10, 30),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 165, 0), 2)
+
+                    else:
+                        # No fall detected or confidence too low
+                        self.frames_not_fallen += 1
+                        self.frames_fallen = 0
+
+                        # Check if person got up (need 3 consecutive frames to confirm)
+                        if self.is_currently_fallen and self.frames_not_fallen >= 3:
+                            self.is_currently_fallen = False
+                            print(f"✅ Person got up - System reset at {datetime.now().strftime('%H:%M:%S')}\n")
+                            logging.info("Person recovered - fall state reset")
 
                     # Display status
-                    status = "FALL DETECTED!" if is_fall else "Monitoring"
-                    color = (0, 0, 255) if is_fall else (0, 255, 0)
+                    if self.is_currently_fallen:
+                        status = "FALLEN - Still Down"
+                        color = (0, 0, 255)  # Red
+                    elif is_fall:
+                        status = "Fall Detected..."
+                        color = (0, 165, 255)  # Orange
+                    else:
+                        status = "Monitoring - OK"
+                        color = (0, 255, 0)  # Green
+
                     cv2.putText(frame, status, (10, 60),
                               cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
                     cv2.putText(frame, f"Conf: {confidence:.2%}", (10, 90),
